@@ -1,0 +1,7 @@
+node_modules/
+*.log
+.env
+design-schema-figma.json
+runtime-schema.json
+.cache/
+.DS_Store

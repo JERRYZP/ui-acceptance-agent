@@ -1,0 +1,50 @@
+# UI Acceptance Agent Configuration
+# Adjust weights and thresholds per project requirements
+
+# Scoring weights (must sum to 1.0)
+scoring:
+  visual_weight: 0.5
+  interaction_weight: 0.3
+  engineering_weight: 0.2
+
+# Pass threshold (0-100)
+pass_score: 95
+
+# Single-category veto: if any category score is below this, overall FAIL
+category_min_score: 60
+
+# Fix confidence thresholds
+fix:
+  auto_propose_threshold: 0.85
+  warning_propose_threshold: 0.7
+  skip_threshold: 0.7
+
+# Validation tolerance
+validation:
+  strict_mismatch_px: 2      # For confidence >= 0.9
+  fuzzy_mismatch_percent: 10  # For confidence 0.6-0.89
+  skip_threshold: 0.6         # Below this, skip auto-validation
+
+# Color comparison
+color:
+  pass_delta_e: 2
+  warn_delta_e: 5
+
+# Viewports for responsive testing
+viewports:
+  desktop: [1920, 1080]
+  tablet: [768, 1024]
+  mobile: [375, 812]
+
+# Figma API settings
+figma:
+  rate_limit_per_sec: 2
+  timeout_ms: 30000
+  cache_hours: 24
+  max_nodes_per_request: 100
+
+# Screenshot fallback settings
+screenshot:
+  target_resolution: [1920, 1080]
+  min_confidence: 0.3
+  max_confidence: 0.7
