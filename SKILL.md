@@ -26,6 +26,24 @@ Responsibilities:
 - Never modify code without user confirmation
 - Continue validation after fixes until acceptance criteria met
 
+## 运行模式（Run Mode）
+
+本 skill 有两种运行模式，**Phase 1 ~ Phase 6（资源闸门到问题诊断）两种模式完全相同**，差异在 Phase 6 之后：
+
+| | Mode A：设计师协作版（默认） | Mode B：开发者自测版 |
+|---|---|---|
+| 定位 | 设计师验收前端实现，产出反馈给前端 | 开发者自验自修，验收-修复闭环 |
+| Phase 6 之后 | 评分 → **总报告(HTML) + UI 验收表** | **输出 UI 验收表 → 暂停等用户确认 → 自动修复 → 自测闭环** |
+| 是否改代码 | 否（只验收+反馈，除非用户额外授权） | 是（用户确认验收表后，按"修改prompt"逐条改代码） |
+| 是否出总报告 | 是（HTML 总报告） | **否**（只输出修复总结 + 复验验收表） |
+| 必要资源 | 设计稿 + 验收对象 | 设计稿 + 验收对象 + **前端源码**（修复必需） |
+
+### 模式判定
+
+- 用户提供**前端源码** 且 表明要"修复 / 自测 / 闭环 / 自己改"→ **Mode B**
+- 否则 → **Mode A**（默认）
+- 用户也可直接声明："用开发者自测版" / "只验收别改" 等
+
 ## Input Resources (Mandatory Gate)
 
 > **铁律 / Hard Rule**: 必填资源齐全且校验可用前，禁止开工。资源缺失或不可用时，必须停下询问用户按格式补齐，**不得降级开工、不得用截图推断代替缺失的设计稿、不得自行猜测验收范围**。
@@ -75,19 +93,22 @@ Responsibilities:
 ## Workflow Overview
 
 ```
-Phase 1   -> Parse Design Resources
-Phase 1.5 -> Extract Design from Figma/Screenshots
-Phase 1.6 -> Token Mapping & Normalization
-Phase 2   -> Launch Frontend Application
-Phase 3   -> Visual Validation
-Phase 4   -> Interaction Validation
-Phase 5   -> Responsive Validation
-Phase 6   -> Issue Diagnosis
-Phase 7   -> Acceptance Score Calculation
-Phase 7.5 -> Auto-Fix Sandbox Definition
-Phase 8   -> Auto Fix Mode (User-Confirmed)
-Phase 9   -> Iterative Loop Until Score >= 95
-Phase 10  -> Final Report
+Phase 1   -> Parse Design Resources          ┐
+Phase 1.5 -> Extract Design from Figma/Shots │
+Phase 1.6 -> Token Mapping & Normalization   │  两种模式
+Phase 2   -> Launch Frontend Application     │  完全相同
+Phase 3   -> Visual Validation               │
+Phase 4   -> Interaction Validation          │
+Phase 5   -> Responsive Validation           │
+Phase 6   -> Issue Diagnosis                 ┘
+        ├── Mode A（设计师协作版，默认）
+        │   Phase 7   -> Acceptance Score
+        │   Phase 10  -> 总报告(HTML) + UI 验收表        [结束]
+        └── Mode B（开发者自测版）
+            Phase 6.5 -> 输出 UI 验收表.md → 暂停等用户确认
+            Phase 8   -> 自动修复（按验收表修改prompt逐条改代码）
+            Phase 9   -> 自测（重新验收：视觉/交互/响应式）
+            Phase 10B -> 修复总结 + 复验验收表（不出总报告） [闭环]
 ```
 
 ---
@@ -883,7 +904,31 @@ Every issue must contain:
 
 ---
 
+# Phase 6.5: 验收表确认闸门（仅 Mode B 开发者自测版）
+
+> **仅 Mode B 执行**。Mode A 跳过本阶段，直接进 Phase 7 评分。
+
+## 输出 UI 验收表
+
+完成 Phase 6 问题诊断后，**不出总报告**，只输出一张 **UI 验收表（Markdown，`UI验收表.md`）** 交付给用户，格式同 Phase 10 的 UI 验收表：
+
+| # | 模块 | 问题类型(视觉/交互/文案) | 问题描述 | 截图 | 优先级 | 修改prompt（建议） |
+
+- 修改prompt 必须含精确位置 + 精确参数（供 agent 自动修复直接使用）。
+- 视觉问题配截图标注（红框）。
+
+## 暂停等用户确认（硬闸门）
+
+- 输出验收表后**必须暂停**，明确询问用户：
+  > 已生成 UI 验收表（共 N 条问题）。请确认是否按此表进入自动修复？回复"确认"即开始修复；如需调整某条，请指出。
+- **用户未确认前，不得进入 Phase 8 修复**。
+- 用户可：① 全部确认 → 进入修复；② 调整某几条（删除/改优先级/改参数）→ 更新表后重新确认；③ 终止。
+
+---
+
 # Phase 7: Acceptance Score Calculation
+
+> **仅 Mode A 执行**（设计师协作版需要评分出报告）。Mode B 跳过评分，走 Phase 6.5 确认 → Phase 8 修复。
 
 ## Scoring Weights
 
@@ -947,6 +992,8 @@ Status: PASS
 ---
 
 # Phase 7.5: Auto-Fix Sandbox Definition
+
+> **仅 Mode B**。定义自动修复的安全边界（只改样式类，不动业务逻辑）。Mode A 跳过。
 
 ## Purpose
 
@@ -1095,14 +1142,20 @@ Reverted to original state. Please review and try again.
 
 ---
 
-# Phase 8: Auto Fix Mode (Sandbox-Enforced)
+# Phase 8: Auto Fix Mode (Mode B 自动修复)
+
+> **仅 Mode B**，且必须在 **Phase 6.5 用户确认验收表后**执行。Mode A 不执行。
+
+## 修复执行依据
+
+按用户确认的 **UI 验收表"修改prompt（建议）"列逐条执行**——每条 prompt 已含精确位置 + 精确参数，agent 直接据此定位文件/选择器并修改样式值。遵守 Phase 7.5 的 Sandbox 边界（只改 CSS 属性值/Tailwind 类/内联样式/设计令牌变量/颜色/圆角/字号，禁动 JSX 结构/事件/状态/逻辑）。
 
 ## Execution Flow
 
 ```
-Validate
+用户确认 UI 验收表
    |
-Generate Issues (with confidence scores)
+按验收表逐条执行修改prompt
    |
 Filter: Only issues with confidence >= 0.8
    |
@@ -1162,17 +1215,29 @@ Recommendation: Accept current state? [Y/n]
 
 ---
 
-# Phase 9: Iterative Loop
+# Phase 9: 自测闭环（仅 Mode B）
+
+> Phase 8 修复完成后，**重新执行 Phase 3/4/5 验收**（自测），形成闭环。
 
 ## Loop
 
 ```
-Validate -> Generate Issues -> User Confirm -> Fix -> Validate Again
+修复完成 -> 重新验收(Phase3/4/5) -> 仍有问题?
+   ├── 是 -> 输出剩余问题验收表 -> 用户确认 -> 回 Phase 8 再修
+   └── 否 -> 进 Phase 10B 修复总结
 ```
+
+## 自测要求
+
+- **在线模式**：重新取 computed style 对照设计稿，确认修改生效；交互实测复验。
+- **截图模式**：需用户重新提供修复后的实现截图，再对照（agent 无法自行刷新截图）。
+- 每轮自测后更新验收表状态（已修复/未通过/新增）。
 
 ## Stop Condition
 
-- Final Score >= 95
+- 验收表所有条目状态 = 已修复（通过）
+- OR: 剩余问题均不可自动修复（需人工）→ 输出剩余清单交用户
+- OR: 用户主动停止
 - OR: No fixable issues remaining
 - OR: User manually stops
 
@@ -1192,6 +1257,12 @@ Validate -> Generate Issues -> User Confirm -> Fix -> Validate Again
 ---
 
 # Phase 10: Final Report
+
+> **模式分支**：
+> - **Mode A**：出总报告（HTML，含标注截图）+ UI 验收表（见下格式）。
+> - **Mode B**：**不出总报告**，只输出"修复总结 + 复验验收表"（见 Phase 10B）。
+
+## Mode A 总报告格式 (Report Format)
 
 > **呈现铁律**：视觉问题**必须**配截图标注（红框圈出位置 + 设计值→实际值）；交互/文案问题文字描述即可。报告 = 总报告（HTML）+ UI 验收表（给前端执行用）。
 
@@ -1273,6 +1344,34 @@ Validate -> Generate Issues -> User Confirm -> Fix -> Validate Again
 
 ---
 
+# Phase 10B: 修复总结（仅 Mode B）
+
+> Mode B 闭环结束时的输出。**不出 HTML 总报告**，只输出 Markdown 修复总结 + 复验验收表。
+
+## 修复总结格式
+
+```markdown
+# UI 自测修复总结
+
+**项目**: [Project]  **日期**: [Date]  **轮次**: [N 轮修复]
+
+## 修复统计
+- 验收表问题总数：N
+- 已修复（复验通过）：X
+- 未通过 / 需人工：Y
+
+## 复验验收表（更新版）
+| # | 模块 | 问题类型 | 问题描述 | 优先级 | 修改prompt | 状态 |
+|---|---|---|---|---|---|---|
+| 1 | ... | 视觉 | ... | P2 | 将 border-radius 8px→10px | ✅已修复 |
+| 2 | ... | 交互 | ... | P3 | 补 loading 态 | ⚠️需人工 |
+
+## 未通过项说明
+（列出未自动修复的项及原因，建议人工处理方式）
+```
+
+---
+
 # Rules
 
 - Never judge only by screenshot difference
@@ -1281,6 +1380,14 @@ Validate -> Generate Issues -> User Confirm -> Fix -> Validate Again
 - Never modify code without confirmation
 - Every failure must include actionable fix
 - Keep validating until acceptance criteria is reached
+
+## 运行模式约束（铁律）
+
+- **双模式**：Mode A 设计师协作版（默认，验收→总报告+验收表，不改代码）；Mode B 开发者自测版（验收→验收表确认→自动修复→自测闭环，不出总报告）。Phase 1~6 两模式相同。
+- **Mode B 确认闸门**：Phase 6.5 输出 UI 验收表后**必须暂停**等用户确认，未确认不得进入 Phase 8 修复。
+- **Mode B 修复依据**：按用户确认的验收表"修改prompt"逐条改，遵守 Sandbox 边界（只改样式类，禁动业务逻辑）。
+- **Mode B 自测**：修复后重新验收（Phase 3/4/5），未通过则更新验收表再确认再修，直至通过或人工。
+- **Mode B 输出**：不出 HTML 总报告，只出修复总结 + 复验验收表（Phase 10B）。
 
 ## 资源与范围约束（铁律，优先级最高）
 
@@ -1327,8 +1434,9 @@ claude skill run ui-acceptance-agent \
 
 ---
 
-Version: 2.3 | Last Updated: 2026-08-17
-- v2.3: 验收对象新增"实现截图"选项（适用小程序/App 无在线链接场景）；新增验收模式分支（在线模式 vs 截图模式），截图模式下交互/响应式/computed style 标注未实测
+Version: 2.4 | Last Updated: 2026-08-17
+- v2.4: 新增 Mode B 开发者自测版（验收→验收表确认→自动修复→自测闭环，不出总报告）；Phase 1~6 双模式共用；新增 Phase 6.5 确认闸门、Phase 10B 修复总结
+- v2.3: 验收对象新增"实现截图"选项（小程序/App场景）；在线模式 vs 截图模式
 - v2.2: 设备范围跟随设计稿；视觉问题截图标注必须；UI 验收表（视觉/交互/文案 + 修改prompt）
 - v2.1: mandatory resource gate + scope constraint + validation-source rules
 - v2.0: initial
