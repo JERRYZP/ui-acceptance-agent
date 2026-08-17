@@ -26,22 +26,44 @@ Responsibilities:
 - Never modify code without user confirmation
 - Continue validation after fixes until acceptance criteria met
 
-## Input Resources
+## Input Resources (Mandatory Gate)
 
-The user may provide:
+> **铁律 / Hard Rule**: 必填资源齐全且校验可用前，禁止开工。资源缺失或不可用时，必须停下询问用户按格式补齐，**不得降级开工、不得用截图推断代替缺失的设计稿、不得自行猜测验收范围**。
 
-### Required
+### Required (必填，提供后须先校验可用性)
 
-- **design.md**: Design tokens, colors, typography, components, layout rules, interaction specifications
-- **Product Documentation**: User scenarios, business logic, user flows, page states
-- **Figma Design** (preferred) OR **UI Screenshots** (fallback): Frames, components, variants, auto layout, prototype interactions
-- **Frontend Project**: React/Vue/HTML source, CSS/Tailwind, assets, runtime environment
+| 资源 | 接受形式 | 校验方式（提供后先检测，不可用则要求重新输入） |
+|---|---|---|
+| **设计稿 Design Spec** | UI 图片/截图 **或** Figma 链接（二选一，Figma 优先） | Figma 链接：尝试 API/HTTP 访问确认可达、非 403/404；图片：确认文件存在、可读、非空白损坏 |
+| **验收链接 Acceptance URL** | 待验收页面的可访问 URL（localhost / 内网 IP / 公网均可） | curl 或浏览器打开确认 HTTP 可达、非 4xx/5xx；若重定向到登录等他页，视为"不可用" |
 
 ### Optional
 
-- **Figma API Token**: For automated design extraction (recommended)
-- **Tailwind Config**: For token resolution
-- **Test Suite**: For post-fix validation
+- **设计规范文档 Design System Doc**: 设计令牌规范（色板/字号阶梯/间距/阴影/描边等）。**非必选**；有则作为令牌对照的优先依据（与 Figma 数据冲突时以更新的为准并询问用户），无则完全依赖设计稿提取。
+- **交互说明文档 Interaction Spec**: 用户场景、业务流程、组件状态、交互行为说明。**有则交互验收以它为准；无则降级为行业通用规则做初级验收**（见 Phase 4）。
+- **Figma API Token**: 用于自动化设计稿数据提取（推荐）
+- **Tailwind Config**: 用于 token 解析
+- **Frontend Project Source**: 源码（仅自动修复阶段需要）
+- **Test Suite**: 修复后验证用
+
+### Resource Validation Gate (开工前必做)
+
+1. **盘点**：检查用户输入是否包含上述 2 项必填资源（设计稿 + 验收链接）。
+2. **校验可用性**：对每项必填资源按上表"校验方式"做一次可用性检测。
+3. **不全或不可用 → 停下询问**：若必填资源缺失或校验失败，明确告知用户缺什么、要求按格式补充；给出资源清单模板，例如：
+   > 缺少设计稿。请提供以下之一：① Figma 链接；或 ② 页面 UI 截图（PNG/JPG）。
+   > 验收链接不可达（HTTP 302 跳转到 /login）。请提供一个已登录/可直接访问的链接，或提供登录方式。
+4. **补齐后复检**：用户补齐后再次校验，直到 2 项必填资源全部可用，才进入 Phase 1。
+5. **模糊输入处理**：若用户输入模糊（如只说"验收这个页面"但没给设计稿），按第 3 步询问，不擅自降级为"无设计稿的启发式检查"。
+6. **资源-链接一致性检查（Content Match Check）**：校验通过后，将设计稿内容与验收链接实际页面做初步比对。**若两者明显不一致**（页面结构/模块构成/导航/核心组件对不上，明显是不同页面或不同版本），**必须先询问用户**：
+   > 设计稿与验收链接内容明显不一致：设计稿是「X 页面/模块」，链接打开是「Y 页面/模块」。请确认：① 是否用错了设计稿节点？② 还是链接不对？③ 还是版本差异，按哪个为准？
+   在用户确认前，不得开工验收。轻微不一致（数据内容、文案占位符不同）不算，直接继续。
+
+### Scope Constraint (验收范围)
+
+- **只验收当前链接**：默认只验收用户指定的单个 URL 对应的页面。
+- **禁止自动跳转**：不得自行导航到其他页面/路由去验收，除非用户明确说明验收范围包含多个页面。
+- **重定向处理**：若页面因未登录等原因重定向到其他页面（如跳到 /login），视为"验收链接不可用"，按 Resource Validation Gate 第 3 步询问用户，不擅自验收重定向后的页面。
 
 ## Workflow Overview
 
@@ -671,6 +693,28 @@ Collect runtime data:
 
 Compare Design Schema vs Runtime Schema.
 
+> **验收依据 / Ground Truth**: 视觉验收**以设计稿为准**。设计稿（Figma 数据优先于截图推断）是期望值的唯一来源，运行时 computed style 是实际值；两者对照得出差异。不得脱离设计稿凭"行业惯例"或"美观感觉"判定视觉问题。
+
+## 验收重点分层
+
+验收分两层，**以局部样式为主**：
+
+1. **全局性问题**（次要）：整页布局结构、模块排列、栅格、留白节奏是否与设计稿一致。
+2. **局部样式**（**主要目标**）：逐组件对照设计稿精确值，重点维度：
+   - **字体**：font-family / font-size / font-weight / line-height / letter-spacing
+   - **颜色**：文字色、背景色、边框色（HEX 互转允许）
+   - **阴影**：box-shadow（x/y/blur/spread/color 逐项比）
+   - **描边**：border（width / style / color）、outline、分割线
+   - **其他**：圆角、尺寸（宽高）、内外边距
+
+## 视觉问题截图标注（必须）
+
+> **铁律**：每个视觉问题必须配**截图并用红框/箭头标注**问题位置。纯文字描述的视觉问题不合格。
+
+- 用浏览器截图（整页或局部元素），在图上用红框圈出问题元素，必要时加文字标注"设计值 → 实际值"。
+- 多个问题时按问题编号逐个标注，或在图上编号对应验收表。
+- 实现：截图后用图像处理（如 Python PIL 画红框 + 文字）生成标注图，保存并在报告/验收表中引用。
+
 ## Layout Check
 
 Validate: Position, Width, Height, Alignment, Padding, Margin, Auto layout
@@ -743,6 +787,10 @@ Result: Missing states: Loading, Disabled
 
 # Phase 4: Interaction Validation
 
+> **验收依据 / Ground Truth (优先级)**:
+> 1. **优先**：用户提供了**交互说明文档**时，交互验收（点击/导航/弹层/状态流转/异常态等）以交互说明文档为准。
+> 2. **降级**：用户未提供交互说明文档时，按**行业通用规则**做初级验收（如：按钮可点击且有反馈、表单提交后有 loading/success/error 态、弹层可关闭、必填项有校验提示等），并在报告中明确标注"本次交互验收基于行业通用规则，非设计稿定义，建议补充交互说明文档以提升验收精度"。
+
 ## Automated Test Case Generation
 
 Generate automated test cases from: Product flow, Figma prototype, UI behavior.
@@ -770,15 +818,23 @@ Click events, Navigation, Modal, Toast, Loading, Error, Empty state, Success sta
 
 # Phase 5: Responsive Validation
 
-## Test Viewports
+> **设备范围铁律 / Device Scope Rule**: 响应式验收的设备范围**跟随设计稿的设备类型**，不做跨设备验收：
+> - 设计稿是 **PC 端**（宽 ≥ 1200，如 1440/1920）→ 只做 **PC 端**视口验收（按设计稿宽度 + 1280/1920 两档检查即可）
+> - 设计稿是 **移动端**（宽 ≤ 480，如 375/430）→ 只做 **移动端**视口验收（375 及设计稿宽度）
+> - 只有用户**明确说明**要做跨设备/全端适配验收时，才扩展到其他设备类型。
+> - 判定依据：设计稿 FRAME 的宽度（Figma absoluteBoundingBox.width 或截图宽度）。
 
-- Desktop: 1920x1080
-- Tablet: 768x1024
-- Mobile: 375x812
+## Test Viewports (按设计稿设备选择)
+
+| 设计稿设备 | 测试视口 |
+|---|---|
+| PC 端（≥1200） | 设计稿宽度（如 1440）+ 1280 + 1920 |
+| 移动端（≤480） | 375 + 设计稿宽度 |
+| 跨设备（用户明确要求时） | 1920 / 768 / 375 全档 |
 
 ## Check
 
-Overflow, Broken layout, Text wrapping, Fixed elements, Safe area.
+Overflow, Broken layout, Text wrapping, Fixed elements, Safe area（仅限选定设备范围内）。
 
 ---
 
@@ -1121,7 +1177,9 @@ Validate -> Generate Issues -> User Confirm -> Fix -> Validate Again
 
 # Phase 10: Final Report
 
-## Report Format
+> **呈现铁律**：视觉问题**必须**配截图标注（红框圈出位置 + 设计值→实际值）；交互/文案问题文字描述即可。报告 = 总报告（HTML）+ UI 验收表（给前端执行用）。
+
+## 总报告格式 (Report Format)
 
 ```markdown
 # UI Acceptance Report
@@ -1129,6 +1187,7 @@ Validate -> Generate Issues -> User Confirm -> Fix -> Validate Again
 **Project**: [Project Name]
 **Date**: [Date]
 **Pages**: [Pages tested]
+**设计稿设备**: [PC / 移动端（响应式验收范围依据）]
 **Iterations**: [Number of iterations]
 
 ---
@@ -1137,46 +1196,64 @@ Validate -> Generate Issues -> User Confirm -> Fix -> Validate Again
 
 | Category | Score |
 |----------|-------|
-| Visual Fidelity | 96/100 |
-| Interaction | 92/100 |
-| Engineering | 98/100 |
-| **Final Score** | **95.2** |
+| Visual Fidelity | xx/100 |
+| Interaction | xx/100 |
+| Engineering | xx/100 |
+| **Final Score** | **xx.x** |
 
-**Status**: PASS
-
----
-
-## Issues Fixed
-
-| # | Issue | Severity | Iteration |
-|---|-------|----------|-----------|
-| 1 | Button height incorrect | High | 1 |
-| 2 | Card padding mismatch | Medium | 1 |
-| 3 | Primary color wrong | High | 2 |
-
-**Total fixed**: 21
+**Status**: PASS / FAIL
 
 ---
 
-## Remaining Issues
+## 全局性问题
 
-| # | Issue | Severity | Auto-Fixable |
-|---|-------|----------|--------------|
-| 1 | Tablet layout broken | High | No |
-| 2 | Hover animation timing | Low | No |
+（整页布局/结构层面的差异，文字描述 + 整页对照截图）
 
 ---
 
-## Recommendations
+## 局部样式问题（主要部分）
 
-1. **Manual fix required**: Tablet layout overflow (needs CSS media query refactor)
-2. **Design team review**: Hover animation timing differs from spec
-3. **Acceptance**: All critical issues resolved, score >= 95
+逐条列出，每条必须包含：
+- 模块/组件位置
+- 维度（字体/颜色/阴影/描边/圆角/间距/尺寸）
+- 设计值 vs 实际值（精确值）
+- **截图标注图**（红框圈出问题位置）
+
+---
+
+## 交互问题
+
+文字描述即可（操作路径、预期行为、实际行为）。
+
+## 文案问题
+
+文字描述（设计稿文案 vs 实际文案，错别字/大小写/术语不统一等）。
 
 ---
 
 **Report generated by**: UI Acceptance Agent
 ```
+
+## UI 验收表 (Acceptance Table，必须输出)
+
+除总报告外，**必须**输出一张 UI 验收表（Markdown 表格），给前端同事直接执行。格式：
+
+| # | 模块 | 问题类型 | 问题描述 | 截图 | 优先级 | 修改prompt（建议） |
+|---|---|---|---|---|---|---|
+| 1 | [页面区域/组件] | 视觉 | [设计值 → 实际值，精确参数] | @image#1:image.png | P1 | 将 XX 组件的 border-radius 从 8px 改为 10px |
+| 2 | [页面区域/组件] | 交互 | [操作路径 + 预期 vs 实际] | （交互问题可无截图） | P2 | 点击 XX 按钮后应显示 loading 态直至请求完成 |
+| 3 | [页面区域/组件] | 文案 | [设计文案 vs 实际文案] | （文案问题可无截图） | P3 | 将按钮文案"提交"改为"Submit" |
+
+### 表格字段规则
+
+- **问题类型**：只允许三类——`视觉` / `交互` / `文案`。
+- **截图**：视觉问题必填，格式 `@image#N:<标注图文件名>`（N 为报告中标注图编号）；交互/文案问题可留空。
+- **优先级**：P0（Critical，功能/布局破坏）/ P1（High，明显视觉偏差）/ P2（Medium，次要偏差）/ P3（Low，细微问题）。
+- **修改prompt（建议）**：**核心列**。写给前端同事在 AI agent（或编码助手）中直接复制使用的修改指令，必须：
+  1. 写明**精确位置**（组件名/选择器/页面区域）
+  2. 写明**精确参数**：`把 [属性] 从 [实际值] 改为 [设计值]`
+  3. 涉及多个属性逐条列出；涉及设计令牌的注明 token 名
+  4. 示例：`将「Financial Statement」卡片的 border-radius 从 8px 改为 10px，并添加 box-shadow: 0 1px 3px rgba(0,0,0,0.05)（依据设计稿 node 24:15557）`
 
 ---
 
@@ -1189,12 +1266,24 @@ Validate -> Generate Issues -> User Confirm -> Fix -> Validate Again
 - Every failure must include actionable fix
 - Keep validating until acceptance criteria is reached
 
+## 资源与范围约束（铁律，优先级最高）
+
+- **必填资源闸门**：设计稿（UI 图片或 Figma 链接）+ 验收链接，二者缺一不可。缺失或不可用时停下询问用户补齐，提供后先校验可用性，不可用则再次要求输入，**不得降级开工**。
+- **可选资源**：设计规范文档（有则作为令牌对照优先依据）、交互说明文档（有则交互验收以它为准，无则按行业通用规则降级并标注）。
+- **资源-链接一致性**：设计稿与验收链接内容明显不一致（不同页面/版本）时，必须先询问用户确认，不得擅自开工。
+- **验收范围**：只验收用户指定的当前链接，**禁止自动跳转**到其他页面验收，除非用户明确扩大验收范围。
+- **设备范围**：响应式验收跟随设计稿设备类型（PC 稿只验 PC 端、移动稿只验移动端），**不做跨设备验收**，除非用户明确要求。
+- **视觉验收依据**：以设计稿为准（Figma 优先于截图）；重点验局部样式（字体/颜色/阴影/描边/圆角/间距），**视觉问题必须配截图标注**。
+- **交互/文案验收依据**：交互优先以交互说明文档为准，无文档按行业通用规则初级验收并标注降级；文案对照设计稿，错别字/术语不统一列为文案问题。
+- **输出要求**：总报告（HTML，含标注截图）+ **UI 验收表**（问题类型分视觉/交互/文案，含"修改prompt（建议）"列，写明精确位置与参数，供前端在 agent 中直接使用）。
+
 # Tools Preference
 
 | Tool | Usage |
 |------|-------|
-| Playwright | Browser automation and interaction testing |
-| Figma API | Design extraction and comparison |
+| agent-browser | Browser automation, screenshots, interaction testing, viewport/responsive checks（本环境实际可用的浏览器工具；命令如 `agent-browser open/snapshot/screenshot/eval/set viewport`）|
+| Playwright | 备选浏览器自动化与交互测试（若 agent-browser 不可用时）|
+| Figma API | Design extraction and comparison（需 FIGMA_TOKEN，优先于截图推断）|
 | AST + Runtime Inspection | Code analysis and style validation |
 | Computer Vision + AI | Visual comparison and screenshot analysis |
 | Claude Code / Codex | Code modification and fix generation |
@@ -1221,4 +1310,7 @@ claude skill run ui-acceptance-agent \
 
 ---
 
-Version: 2.0 | Last Updated: 2026-08-07
+Version: 2.2 | Last Updated: 2026-08-17
+- v2.2: 设备范围跟随设计稿（不跨设备）；新增设计规范文档（可选）与资源-链接一致性检查；视觉验收聚焦局部样式+截图标注必须；新增 UI 验收表输出（视觉/交互/文案 + 修改prompt）
+- v2.1: mandatory resource gate + scope constraint + validation-source rules
+- v2.0: initial
